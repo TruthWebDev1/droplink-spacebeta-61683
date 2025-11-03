@@ -107,12 +107,12 @@ export const PiAuth = () => {
 
   const handleAdWatched = () => {
     toast.success("Thank you for supporting Droplink!");
-    navigate("/dashboard");
+    navigate("/");
   };
 
   const handleSkipAd = () => {
     toast.info("Proceeding without ad...");
-    navigate("/dashboard");
+    navigate("/");
   };
 
   if (initializing) {

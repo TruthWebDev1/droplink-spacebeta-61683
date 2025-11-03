@@ -20,8 +20,14 @@ serve(async (req) => {
 
     console.log('Verifying Pi access token...');
 
-    // Verify the access token with Pi servers
+    // Get Pi API key from environment
     const piApiKey = Deno.env.get('PI_API_KEY');
+    if (!piApiKey) {
+      console.error('PI_API_KEY not configured');
+      throw new Error('Server configuration error: PI_API_KEY missing');
+    }
+
+    // Verify the access token with Pi servers
     const verifyResponse = await fetch('https://api.minepi.com/v2/me', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -29,8 +35,9 @@ serve(async (req) => {
     });
 
     if (!verifyResponse.ok) {
-      console.error('Pi verification failed:', await verifyResponse.text());
-      throw new Error('Invalid Pi access token');
+      const errorText = await verifyResponse.text();
+      console.error('Pi verification failed:', errorText);
+      throw new Error(`Pi verification failed: ${verifyResponse.status}`);
     }
 
     const piUser = await verifyResponse.json();
