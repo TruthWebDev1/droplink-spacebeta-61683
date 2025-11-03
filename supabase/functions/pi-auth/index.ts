@@ -58,30 +58,64 @@ serve(async (req) => {
     let profileId;
     let userId;
 
+    const email = `${piUser.uid}@pi.network`;
+
     if (existingProfile) {
       profileId = existingProfile.id;
       userId = existingProfile.user_id;
       console.log('Existing profile found:', profileId);
     } else {
-      // Create a new auth user for this Pi user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: `${piUser.uid}@pi.network`,
-        email_confirm: true,
-        user_metadata: {
-          pi_username: piUser.username,
-          pi_uid: piUser.uid,
-        },
-      });
+      console.log('No existing profile found. Ensuring auth user exists for', email);
 
-      if (authError) {
-        console.error('Failed to create auth user:', authError);
-        throw authError;
+      // Try to find an existing auth user first
+      let authUserId: string | null = null;
+      try {
+        const { data: usersData, error: listError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        if (listError) {
+          console.warn('listUsers error (safe to ignore):', listError);
+        } else {
+          const match = usersData?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+          if (match) authUserId = match.id;
+        }
+      } catch (e) {
+        console.warn('listUsers threw (safe to continue):', e);
       }
 
-      userId = authData.user.id;
-      console.log('Created new auth user:', userId);
+      if (!authUserId) {
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email,
+          email_confirm: true,
+          user_metadata: {
+            pi_username: piUser.username,
+            pi_uid: piUser.uid,
+          },
+        });
 
-      // Create profile
+        if (authError) {
+          // If the email already exists, fetch that user and continue
+          // @ts-ignore code property exists on AuthApiError
+          if ((authError as any).code === 'email_exists') {
+            console.warn('Auth user already exists, fetching existing user by email');
+            const { data: usersData2 } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+            const match2 = usersData2?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+            if (match2) authUserId = match2.id;
+          } else {
+            console.error('Failed to create auth user:', authError);
+            throw authError;
+          }
+        } else {
+          authUserId = authData.user.id;
+          console.log('Created new auth user:', authUserId);
+        }
+      }
+
+      if (!authUserId) {
+        throw new Error('Unable to resolve auth user id');
+      }
+
+      userId = authUserId;
+
+      // Ensure profile exists for this user
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
         .insert({
@@ -90,15 +124,25 @@ serve(async (req) => {
           business_name: piUser.username,
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (profileError) {
-        console.error('Failed to create profile:', profileError);
-        throw profileError;
+        // Ignore unique violations and fetch the profile
+        console.warn('Profile insert error, attempting to fetch existing profile:', profileError);
       }
 
-      profileId = newProfile.id;
-      console.log('Created new profile:', profileId);
+      if (newProfile) {
+        profileId = newProfile.id;
+      } else {
+        const { data: fetchedProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', piUser.username)
+          .maybeSingle();
+        profileId = fetchedProfile?.id;
+      }
+
+      console.log('Resolved profile id:', profileId);
     }
 
     // Generate session token for the user
