@@ -47,7 +47,7 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
 
       // Get all analytics for this profile
       const { data, error } = await supabase
-        .from("analytics")
+        .from("analytics" as any)
         .select("*")
         .eq("profile_id", profileId);
 
@@ -59,17 +59,17 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
       if (!data) return;
 
       // Calculate metrics
-      const totalViews = data.filter((a) => a.event_type === "view").length;
-      const socialClicks = data.filter((a) => a.event_type === "social_click").length;
-      const productClicks = data.filter((a) => a.event_type === "product_click").length;
+      const totalViews = data.filter((a: any) => a.event_type === "view").length;
+      const socialClicks = data.filter((a: any) => a.event_type === "social_click").length;
+      const productClicks = data.filter((a: any) => a.event_type === "product_click").length;
 
       // Get recent views (last 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       
       const recentViewsData = data
-        .filter((a) => a.event_type === "view" && new Date(a.created_at) >= sevenDaysAgo)
-        .reduce((acc: Record<string, number>, curr) => {
+        .filter((a: any) => a.event_type === "view" && new Date(a.created_at) >= sevenDaysAgo)
+        .reduce((acc: Record<string, number>, curr: any) => {
           const date = new Date(curr.created_at).toLocaleDateString();
           acc[date] = (acc[date] || 0) + 1;
           return acc;
@@ -82,8 +82,8 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
 
       // Get top social platforms
       const socialData = data
-        .filter((a) => a.event_type === "social_click")
-        .reduce((acc: Record<string, number>, curr) => {
+        .filter((a: any) => a.event_type === "social_click")
+        .reduce((acc: Record<string, number>, curr: any) => {
           const platform = (curr.event_data as any)?.platform || "unknown";
           acc[platform] = (acc[platform] || 0) + 1;
           return acc;
@@ -96,8 +96,8 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
 
       // Get top products
       const productData = data
-        .filter((a) => a.event_type === "product_click")
-        .reduce((acc: Record<string, number>, curr) => {
+        .filter((a: any) => a.event_type === "product_click")
+        .reduce((acc: Record<string, number>, curr: any) => {
           const title = (curr.event_data as any)?.product_title || "Unknown";
           acc[title] = (acc[title] || 0) + 1;
           return acc;
@@ -110,8 +110,8 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
 
       // Get top locations
       const locationData = data
-        .filter((a) => a.location_country)
-        .reduce((acc: Record<string, { country: string; city: string; count: number }>, curr) => {
+        .filter((a: any) => a.location_country)
+        .reduce((acc: Record<string, { country: string; city: string; count: number }>, curr: any) => {
           const key = `${curr.location_country}-${curr.location_city || 'Unknown'}`;
           if (acc[key]) {
             acc[key].count += 1;
@@ -125,14 +125,14 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
           return acc;
         }, {});
 
-      const topLocations = Object.values(locationData)
+      const topLocations = (Object.values(locationData) as Array<{ country: string; city: string; count: number }>)
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
       // Get custom link clicks
       const linkClickData = data
-        .filter((a) => a.event_type === "custom_link_click")
-        .reduce((acc: Record<string, number>, curr) => {
+        .filter((a: any) => a.event_type === "custom_link_click")
+        .reduce((acc: Record<string, number>, curr: any) => {
           const url = (curr.event_data as any)?.url || "unknown";
           acc[url] = (acc[url] || 0) + 1;
           return acc;
@@ -145,27 +145,27 @@ export const Analytics = ({ profileId }: { profileId: string }) => {
 
       // Get follower count
       const { count: followerCount } = await supabase
-        .from("followers")
+        .from("followers" as any)
         .select("*", { count: "exact", head: true })
         .eq("following_profile_id", profileId);
 
       // Get gift transactions
       const { data: giftsReceivedData } = await supabase
-        .from("gift_transactions")
+        .from("gift_transactions" as any)
         .select("drop_tokens_spent, sender_profile_id, profiles!gift_transactions_sender_profile_id_fkey(business_name)")
         .eq("receiver_profile_id", profileId);
 
       const { data: giftsSentData } = await supabase
-        .from("gift_transactions")
+        .from("gift_transactions" as any)
         .select("drop_tokens_spent")
         .eq("sender_profile_id", profileId);
 
       const giftsReceived = giftsReceivedData?.length || 0;
       const giftsSent = giftsSentData?.length || 0;
-      const totalGiftValue = giftsReceivedData?.reduce((sum, gift) => sum + gift.drop_tokens_spent, 0) || 0;
+      const totalGiftValue = giftsReceivedData?.reduce((sum: number, gift: any) => sum + gift.drop_tokens_spent, 0) || 0;
 
       // Calculate top gifters
-      const gifterData = giftsReceivedData?.reduce((acc: Record<string, { count: number; value: number; businessName: string }>, curr) => {
+      const gifterData = giftsReceivedData?.reduce((acc: Record<string, { count: number; value: number; businessName: string }>, curr: any) => {
         const senderId = curr.sender_profile_id;
         const businessName = (curr.profiles as any)?.business_name || "Anonymous";
         if (acc[senderId]) {

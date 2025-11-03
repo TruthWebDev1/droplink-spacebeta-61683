@@ -38,7 +38,7 @@ export const AIChatWidget = ({ profileId }: AIChatWidgetProps) => {
   const checkAIEnabled = async () => {
     try {
       const { data } = await supabase
-        .from("ai_support_config")
+        .from("ai_support_config" as any)
         .select("enabled")
         .eq("profile_id", profileId)
         .maybeSingle();
