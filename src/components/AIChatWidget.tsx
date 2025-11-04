@@ -43,7 +43,7 @@ export const AIChatWidget = ({ profileId }: AIChatWidgetProps) => {
         .eq("profile_id", profileId)
         .maybeSingle();
 
-      setIsEnabled(data?.enabled || false);
+      setIsEnabled((data as any)?.enabled || false);
     } catch (error) {
       console.error("Error checking AI status:", error);
     }

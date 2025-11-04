@@ -10,7 +10,6 @@ import Subscription from "./pages/Subscription";
 import PiSubscription from "./pages/PiSubscription";
 import Followers from "./pages/Followers";
 import Wallet from "./pages/Wallet";
-import Profile from "./pages/Profile";
 import AISupport from "./pages/AISupport";
 import Admin from "./pages/Admin";
 import { Auth } from "./components/Auth";
@@ -30,7 +29,6 @@ const App = () => (
           <Route path="/subscription" element={<PiSubscription />} />
           <Route path="/followers" element={<Followers />} />
           <Route path="/wallet" element={<Wallet />} />
-          <Route path="/profile" element={<Profile />} />
           <Route path="/ai-support" element={<AISupport />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/:username" element={<PublicBio />} />

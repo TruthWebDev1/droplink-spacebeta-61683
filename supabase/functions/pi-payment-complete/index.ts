@@ -38,28 +38,70 @@ serve(async (req) => {
       throw new Error('Failed to complete payment');
     }
 
-    const completionData = await completeResponse.json();
-    console.log('Payment completed successfully:', completionData);
+    const paymentData = await completeResponse.json();
+    console.log('Payment completed successfully:', paymentData);
 
-    // Update user's premium status in database
+    // Update user's subscription status in database
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get the profile ID from payment metadata
-    if (completionData.metadata && completionData.metadata.profileId) {
-      await supabase
+    // Get subscription details from payment metadata
+    const profileId = paymentData.metadata?.profile_id || paymentData.metadata?.profileId;
+    const plan = paymentData.metadata?.plan;
+    const period = paymentData.metadata?.period;
+    const piAmount = paymentData.amount;
+    
+    if (profileId && plan && period) {
+      // Calculate expiration date
+      const now = new Date();
+      const expiresAt = new Date(now);
+      if (period === 'yearly') {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      } else {
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+      }
+
+      // Update profile subscription
+      const { error: updateError } = await supabase
         .from('profiles')
-        .update({ has_premium: true })
-        .eq('id', completionData.metadata.profileId);
-      
-      console.log('Updated premium status for profile:', completionData.metadata.profileId);
+        .update({ 
+          subscription_plan: plan,
+          subscription_expires_at: expiresAt.toISOString(),
+          subscription_period: period,
+          has_premium: true
+        })
+        .eq('id', profileId);
+
+      if (updateError) {
+        console.error('Failed to update profile:', updateError);
+        throw updateError;
+      }
+
+      // Record the transaction
+      const { error: txError } = await supabase
+        .from('subscription_transactions')
+        .insert({
+          profile_id: profileId,
+          plan,
+          period,
+          pi_amount: piAmount,
+          pi_payment_id: paymentId,
+          pi_txid: txid,
+          expires_at: expiresAt.toISOString()
+        });
+
+      if (txError) {
+        console.error('Failed to record transaction:', txError);
+      }
+
+      console.log(`Updated profile ${profileId} to ${plan} (${period}) until ${expiresAt.toISOString()}`);
     }
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        payment: completionData 
+        payment: paymentData 
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -10,48 +10,49 @@ import { PiSDK, PiPaymentData, PiPaymentCallbacks } from "@/lib/pi-sdk";
 const getPlans = (isYearly: boolean) => [
   {
     name: "Free",
-    piPrice: 0,
-    displayPrice: "0π",
+    piAmount: 0,
+    price: "Free",
     period: "forever",
     features: [
-      "Only 1 link allowed",
-      "Pi Ad Network included",
+      "1 link only",
+      "1 social link",
+      "Pi Ad Network enabled",
       "Droplink watermark",
-      "Limited features only",
-      "Community disabled",
+      "No analytics",
+      "No YouTube links",
+      "No Pi tips",
     ],
     current: true,
   },
   {
     name: "Premium",
-    piPrice: isYearly ? 96 : 10,
-    displayPrice: isYearly ? "96π" : "10π",
+    piAmount: isYearly ? 100 : 10,
+    price: isYearly ? "100 Pi" : "10 Pi",
     period: isYearly ? "per year" : "per month",
-    discount: isYearly ? "20% off" : null,
     features: [
       "Unlimited links",
-      "No Pi Ad Network",
-      "Remove Droplink watermark",
-      "Unlimited customized design",
-      "Community enabled",
-      "No analytics access",
-      "Priority support",
+      "Unlimited social links",
+      "YouTube link support",
+      "Pi tips wallet",
+      "No watermark",
+      "No ads",
+      "No analytics",
+      "No AI support",
     ],
     popular: true,
   },
   {
     name: "Pro",
-    piPrice: isYearly ? 288 : 30,
-    displayPrice: isYearly ? "288π" : "30π",
+    piAmount: isYearly ? 300 : 30,
+    price: isYearly ? "300 Pi" : "30 Pi",
     period: isYearly ? "per year" : "per month",
-    discount: isYearly ? "20% off" : null,
     features: [
       "Everything in Premium",
-      "Advanced analytics included",
+      "Full analytics with location data",
+      "AI support chatbot",
+      "Watch ads for rewards",
+      "Priority support",
       "API access",
-      "White-label solution",
-      "Custom integrations",
-      "Dedicated account manager",
     ],
   },
 ];
@@ -82,7 +83,7 @@ const PiSubscription = () => {
     getProfile();
   }, []);
 
-  const handlePiPayment = async (planName: string, piAmount: number) => {
+  const handlePiPayment = async (planName: string, piAmount: number, period: 'monthly' | 'yearly') => {
     if (piAmount === 0) {
       toast.info("You're already on the free plan!");
       return;
@@ -114,11 +115,11 @@ const PiSubscription = () => {
 
       const paymentData: PiPaymentData = {
         amount: piAmount,
-        memo: `${planName} Plan Subscription - Droplink`,
+        memo: `Droplink ${planName} Subscription (${period})`,
         metadata: {
-          planName,
-          profileId,
-          subscriptionType: 'monthly',
+          profile_id: profileId,
+          plan: planName.toLowerCase(),
+          period: period
         },
       };
 
@@ -168,7 +169,7 @@ const PiSubscription = () => {
             
             // Refresh the page to show new subscription status
             setTimeout(() => {
-              navigate("/dashboard");
+              navigate("/");
             }, 2000);
           } catch (err) {
             console.error('Completion error:', err);
@@ -210,7 +211,7 @@ const PiSubscription = () => {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border px-4 lg:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
@@ -268,18 +269,8 @@ const PiSubscription = () => {
               <CardHeader>
                 <CardTitle className="text-2xl">{plan.name}</CardTitle>
                 <CardDescription>
-                  <div className="flex items-center gap-2">
-                    <Coins className="w-5 h-5 text-primary" />
-                    <span className="text-3xl font-bold text-foreground">{plan.displayPrice}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-sm">/{plan.period}</span>
-                    {plan.discount && (
-                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                        {plan.discount}
-                      </span>
-                    )}
-                  </div>
+                  <span className="text-3xl font-bold text-foreground">{plan.price}</span>
+                  <span className="text-muted-foreground">/{plan.period}</span>
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -295,9 +286,9 @@ const PiSubscription = () => {
                   className="w-full" 
                   variant={plan.popular ? "default" : "outline"}
                   disabled={plan.current || loading}
-                  onClick={() => handlePiPayment(plan.name, plan.piPrice)}
+                  onClick={() => handlePiPayment(plan.name, plan.piAmount, isYearly ? 'yearly' : 'monthly')}
                 >
-                  {plan.current ? "Current Plan" : `Pay ${plan.displayPrice}`}
+                  {plan.current ? "Current Plan" : `Subscribe with Pi`}
                 </Button>
               </CardContent>
             </Card>
