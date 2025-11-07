@@ -49,18 +49,26 @@ export interface PiPaymentCallbacks {
 
 export type AdType = 'interstitial' | 'rewarded';
 
-export type AdRequestResult = 'AD_LOADED' | 'AD_FAILED_TO_LOAD' | 'AD_NOT_AVAILABLE';
+export type ShowAdResponse =
+  | {
+      type: "interstitial";
+      result: "AD_CLOSED" | "AD_DISPLAY_ERROR" | "AD_NETWORK_ERROR" | "AD_NOT_AVAILABLE";
+    }
+  | {
+      type: "rewarded";
+      result: "AD_REWARDED" | "AD_CLOSED" | "AD_DISPLAY_ERROR" | "AD_NETWORK_ERROR" | "AD_NOT_AVAILABLE" | "ADS_NOT_SUPPORTED" | "USER_UNAUTHENTICATED";
+      adId?: string;
+    };
 
-export interface RequestAdResponse {
+export type IsAdReadyResponse = {
   type: AdType;
-  result: AdRequestResult;
-}
+  ready: boolean;
+};
 
-export type AdDisplayResult = 'AD_DISPLAYED' | 'AD_CLOSED' | 'AD_FAILED';
-
-export interface ShowAdResponse {
-  result: AdDisplayResult;
-}
+export type RequestAdResponse = {
+  type: AdType;
+  result: "AD_LOADED" | "AD_FAILED_TO_LOAD" | "AD_NOT_AVAILABLE";
+};
 
 declare global {
   interface Window {
@@ -78,7 +86,8 @@ declare global {
       nativeFeaturesList: () => Promise<string[]>;
       Ads: {
         requestAd: (adType: AdType) => Promise<RequestAdResponse>;
-        showAd: () => Promise<ShowAdResponse>;
+        showAd: (adType: AdType) => Promise<ShowAdResponse>;
+        isAdReady: (adType: AdType) => Promise<IsAdReadyResponse>;
       };
     };
   }
@@ -162,11 +171,19 @@ export class PiSDK {
     return window.Pi.Ads.requestAd(adType);
   }
 
-  static async showAd(): Promise<ShowAdResponse> {
+  static async isAdReady(adType: AdType = 'rewarded'): Promise<IsAdReadyResponse> {
     if (!window.Pi?.Ads) {
       throw new Error('Pi Ads API not loaded');
     }
 
-    return window.Pi.Ads.showAd();
+    return window.Pi.Ads.isAdReady(adType);
+  }
+
+  static async showAd(adType: AdType = 'rewarded'): Promise<ShowAdResponse> {
+    if (!window.Pi?.Ads) {
+      throw new Error('Pi Ads API not loaded');
+    }
+
+    return window.Pi.Ads.showAd(adType);
   }
 }

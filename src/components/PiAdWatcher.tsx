@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PiSDK, AdType } from "@/lib/pi-sdk";
+import { PiSDK } from "@/lib/pi-sdk";
 import { Loader2, Play, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,7 +15,7 @@ interface PiAdWatcherProps {
 export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatcherProps) => {
   const [loading, setLoading] = useState(true);
   const [adSupported, setAdSupported] = useState(false);
-  const [adRequested, setAdRequested] = useState(false);
+  const [adReady, setAdReady] = useState(false);
   const [showingAd, setShowingAd] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adWatched, setAdWatched] = useState(false);
@@ -25,7 +25,9 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
   }, []);
 
   const checkAdSupport = async () => {
+    setLoading(true);
     try {
+      await PiSDK.initialize(false);
       const supported = await PiSDK.checkAdNetworkSupport();
       setAdSupported(supported);
       
@@ -34,10 +36,22 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
         if (allowSkip) {
           toast.info('Ad Network not available, you can proceed');
         }
+        setLoading(false);
+        return;
       }
-    } catch (error) {
+
+      // Check if ad is ready
+      const readyResponse = await PiSDK.isAdReady('rewarded');
+      setAdReady(readyResponse.ready);
+      
+      // If not ready, request one
+      if (!readyResponse.ready) {
+        await handleRequestAd();
+      }
+    } catch (error: any) {
       console.error('Failed to check ad support:', error);
-      setError('Failed to check ad network support');
+      setError(error.message || 'Failed to check ad network support');
+      setAdSupported(false);
       if (allowSkip) {
         toast.info('Could not verify ad support, you can proceed');
       }
@@ -57,15 +71,17 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
       console.log('Ad request response:', response);
 
       if (response.result === 'AD_LOADED') {
-        setAdRequested(true);
+        setAdReady(true);
         toast.success('Ad loaded! Click "Watch Ad" to continue');
       } else if (response.result === 'AD_NOT_AVAILABLE') {
         setError('No ads available at this time');
+        setAdReady(false);
         if (allowSkip) {
           toast.info('No ads available, you can proceed');
         }
       } else {
         setError('Failed to load ad');
+        setAdReady(false);
         if (allowSkip) {
           toast.info('Ad loading failed, you can proceed');
         }
@@ -73,6 +89,7 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
     } catch (error: any) {
       console.error('Failed to request ad:', error);
       setError(error.message || 'Failed to request ad');
+      setAdReady(false);
       if (allowSkip) {
         toast.info('Ad request failed, you can proceed');
       }
@@ -86,12 +103,12 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
     setError(null);
 
     try {
-      console.log('Showing ad...');
-      const response = await PiSDK.showAd();
+      console.log('Showing rewarded ad...');
+      const response = await PiSDK.showAd('rewarded');
       
       console.log('Ad show response:', response);
 
-      if (response.result === 'AD_DISPLAYED') {
+      if (response.result === 'AD_REWARDED') {
         setAdWatched(true);
         toast.success('Thank you for watching the ad!');
         
@@ -101,10 +118,21 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
         }, 1500);
       } else if (response.result === 'AD_CLOSED') {
         setError('Ad was closed before completion');
-        setAdRequested(false);
+        setAdReady(false);
         toast.error('Please watch the complete ad to continue');
+        // Try to load another ad
+        await handleRequestAd();
+      } else if (response.result === 'ADS_NOT_SUPPORTED') {
+        setError('Ads are not supported in this version');
+        setAdSupported(false);
+        if (allowSkip) {
+          toast.info('Ads not supported, you can proceed');
+        }
+      } else if (response.result === 'USER_UNAUTHENTICATED') {
+        setError('Please authenticate with Pi Network first');
       } else {
-        setError('Failed to display ad');
+        setError(`Ad error: ${response.result}`);
+        setAdReady(false);
         if (allowSkip) {
           toast.info('Ad display failed, you can proceed');
         }
@@ -112,6 +140,7 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
     } catch (error: any) {
       console.error('Failed to show ad:', error);
       setError(error.message || 'Failed to show ad');
+      setAdReady(false);
       if (allowSkip) {
         toast.info('Ad display failed, you can proceed');
       }
@@ -120,7 +149,7 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
     }
   };
 
-  if (loading) {
+  if (loading && !adReady) {
     return (
       <Card className="w-full max-w-md mx-auto">
         <CardContent className="flex items-center justify-center py-12">
@@ -177,7 +206,7 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
           </Alert>
         )}
 
-        {adSupported && !adRequested && !error && (
+        {adSupported && !adReady && !error && (
           <div className="space-y-4">
             <div className="bg-muted p-4 rounded-lg text-center">
               <p className="text-sm text-muted-foreground">
@@ -205,7 +234,7 @@ export const PiAdWatcher = ({ onAdWatched, onSkip, allowSkip = false }: PiAdWatc
           </div>
         )}
 
-        {adRequested && !error && (
+        {adReady && !error && (
           <div className="space-y-4">
             <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-lg text-center">
               <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />

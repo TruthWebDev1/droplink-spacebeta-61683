@@ -9,6 +9,7 @@ import { FollowersSection } from "@/components/FollowersSection";
 import { GiftDialog } from "@/components/GiftDialog";
 import { AIChatWidget } from "@/components/AIChatWidget";
 import { PiAdNetwork } from "@/components/PiAdNetwork";
+import { useSubscription } from "@/hooks/useSubscription";
 import {
   Twitter,
   Instagram,
@@ -92,6 +93,7 @@ const PublicBio = () => {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [showGiftDialog, setShowGiftDialog] = useState(false);
+  const { features } = useSubscription();
 
   useEffect(() => {
     loadProfile();
@@ -726,6 +728,22 @@ const PublicBio = () => {
 
       {/* AI Chat Widget */}
       {profileId && <AIChatWidget profileId={profileId} />}
+
+      {/* Pi Ad Network for free users */}
+      {profile && features.hasPiAdNetwork && (
+        <div className="mt-8">
+          <PiAdNetwork className="max-w-2xl" />
+        </div>
+      )}
+
+      {/* Watermark for free users */}
+      {profile && features.hasWatermark && (
+        <div className="mt-8 text-center">
+          <p className="text-xs text-muted-foreground">
+            Powered by <a href="/" className="underline hover:text-foreground">Droplink</a>
+          </p>
+        </div>
+      )}
     </div>
   );
 };

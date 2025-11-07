@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSubscription } from "@/hooks/useSubscription";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,7 @@ interface ProfileData {
 const Dashboard = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { plan, features, loading: subscriptionLoading } = useSubscription();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -398,17 +400,15 @@ const Dashboard = () => {
                     <Wallet className="w-4 h-4" />
                     Wallet
                   </Button>
-                  <Button onClick={() => navigate("/profile")} variant="outline" size="sm" className="w-full justify-start gap-2">
-                    <User className="w-4 h-4" />
-                    Profile
-                  </Button>
-                  <Button onClick={() => navigate("/ai-support")} variant="outline" size="sm" className="w-full justify-start gap-2">
-                    <Bot className="w-4 h-4" />
-                    AI Support
-                  </Button>
-                  <Button onClick={() => navigate("/subscription")} variant="outline" size="sm" className="w-full justify-start gap-2">
+                  {features.hasAI && (
+                    <Button onClick={() => navigate("/ai-support")} variant="outline" size="sm" className="w-full justify-start gap-2">
+                      <Bot className="w-4 h-4" />
+                      AI Support
+                    </Button>
+                  )}
+                  <Button onClick={() => navigate("/pi-subscription")} variant="outline" size="sm" className="w-full justify-start gap-2">
                     <Wallet className="w-4 h-4" />
-                    Upgrade
+                    Upgrade Plan
                   </Button>
                   <DrawerClose asChild>
                     <Button variant="ghost" size="sm" className="w-full">Close</Button>
@@ -444,30 +444,24 @@ const Dashboard = () => {
                 <Wallet className="w-4 h-4" />
                 Wallet
               </Button>
+              {features.hasAI && (
+                <Button 
+                  onClick={() => navigate("/ai-support")} 
+                  variant="outline" 
+                  size="sm" 
+                  className="hidden lg:flex gap-2"
+                >
+                  <Bot className="w-4 h-4" />
+                  AI Support
+                </Button>
+              )}
               <Button 
-                onClick={() => navigate("/profile")} 
+                onClick={() => navigate("/pi-subscription")} 
                 variant="outline" 
                 size="sm" 
-                className="hidden lg:flex gap-2"
+                className="hidden md:flex gap-2"
               >
-                <User className="w-4 h-4" />
-                Profile
-              </Button>
-              <Button 
-                onClick={() => navigate("/ai-support")} 
-                variant="outline" 
-                size="sm" 
-                className="hidden lg:flex gap-2"
-              >
-                <Bot className="w-4 h-4" />
-                AI Support
-              </Button>
-              <Button 
-                onClick={() => navigate("/subscription")} 
-                variant="outline" 
-                size="sm" 
-                className="hidden md:flex"
-              >
+                <span className="text-xs px-2 py-0.5 bg-primary/20 rounded mr-1">{plan.toUpperCase()}</span>
                 Upgrade
               </Button>
             </>
@@ -597,23 +591,36 @@ const Dashboard = () => {
 
               {/* YouTube Video URL */}
               <div className="mb-6">
-                <Label htmlFor="youtube-video" className="mb-3 block">YouTube Video</Label>
+                <Label htmlFor="youtube-video" className="mb-3 block">
+                  YouTube Video
+                  {!features.hasYoutube && <span className="text-xs text-muted-foreground ml-2">(Premium+)</span>}
+                </Label>
                 <Input
                   id="youtube-video"
                   value={profile.youtubeVideoUrl}
                   onChange={(e) => setProfile({ ...profile, youtubeVideoUrl: e.target.value })}
-                  placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                  placeholder={features.hasYoutube ? "https://www.youtube.com/watch?v=..." : "Upgrade to Premium to add YouTube video"}
                   className="bg-input-bg"
+                  disabled={!features.hasYoutube}
                 />
-                <p className="text-xs text-muted-foreground mt-2">
-                  Add a YouTube video to showcase your business or products
-                </p>
+                {!features.hasYoutube && (
+                  <Button onClick={() => navigate("/pi-subscription")} variant="link" size="sm" className="mt-1 p-0 h-auto">
+                    Upgrade to add YouTube video
+                  </Button>
+                )}
               </div>
             </div>
 
             {/* Social Links */}
             <div>
-              <h2 className="text-lg font-semibold mb-6">Social links</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold">Social links</h2>
+                {features.maxSocial !== -1 && (
+                  <span className="text-xs text-muted-foreground">
+                    {Object.values(profile.socialLinks).filter(Boolean).length} / {features.maxSocial} used
+                  </span>
+                )}
+              </div>
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center">
@@ -929,7 +936,14 @@ const Dashboard = () => {
 
               {/* Analytics Tab */}
               <TabsContent value="analytics" className="pb-8">
-                {profileId ? (
+                {!features.hasAnalytics ? (
+                  <div className="text-center py-12">
+                    <BarChart3 className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-semibold mb-2">Analytics Available in Pro Plan</h3>
+                    <p className="text-muted-foreground mb-4">Track visitor data, clicks, and more</p>
+                    <Button onClick={() => navigate("/pi-subscription")}>Upgrade to Pro</Button>
+                  </div>
+                ) : profileId ? (
                   <Analytics profileId={profileId} />
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
