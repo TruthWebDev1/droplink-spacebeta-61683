@@ -105,9 +105,24 @@ export const PiAuth = () => {
     }
   };
 
-  const handleAdWatched = () => {
+  const handleAdWatched = async () => {
     toast.success("Thank you for supporting Droplink!");
-    navigate("/");
+    // Ensure a profile exists before proceeding
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!profile) {
+        const username = `user-${user.id.slice(0, 8)}`;
+        const business = user.email?.split('@')[0] || 'New User';
+        await supabase.from('profiles').insert({ user_id: user.id, username, business_name: business, subscription_plan: 'free' });
+      }
+    }
+    // Send users to plan selection first time
+    navigate("/subscription");
   };
 
   const handleSkipAd = () => {

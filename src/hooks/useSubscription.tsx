@@ -71,13 +71,36 @@ export const useSubscription = () => {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_plan, subscription_expires_at')
+        .select('subscription_plan, subscription_expires_at, id, user_id, username, business_name')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (profile) {
-        const currentPlan = profile.subscription_plan as SubscriptionPlan || 'free';
-        const expires = profile.subscription_expires_at ? new Date(profile.subscription_expires_at) : null;
+      let effectiveProfile = profile;
+
+      // If no profile exists yet, create a minimal one with defaults
+      if (!effectiveProfile) {
+        const defaultUsername = `user-${user.id.slice(0, 8)}`;
+        const defaultBusiness = user.email?.split('@')[0] || 'New User';
+        const { data: created, error: createErr } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: user.id,
+            username: defaultUsername,
+            business_name: defaultBusiness,
+            subscription_plan: 'free',
+          })
+          .select('subscription_plan, subscription_expires_at')
+          .single();
+        if (createErr) {
+          console.error('Failed to auto-create profile:', createErr);
+        } else {
+          effectiveProfile = created as any;
+        }
+      }
+
+      if (effectiveProfile) {
+        const currentPlan = (effectiveProfile as any).subscription_plan as SubscriptionPlan || 'free';
+        const expires = (effectiveProfile as any).subscription_expires_at ? new Date((effectiveProfile as any).subscription_expires_at) : null;
 
         // Check if subscription is expired
         if (expires && expires < new Date()) {

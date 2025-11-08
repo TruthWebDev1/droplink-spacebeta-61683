@@ -27,10 +27,14 @@ const ICON_OPTIONS = [
 interface CustomLinksManagerProps {
   links: CustomLink[];
   onChange: (links: CustomLink[]) => void;
+  maxLinks?: number;
 }
 
-export const CustomLinksManager = ({ links, onChange }: CustomLinksManagerProps) => {
+export const CustomLinksManager = ({ links, onChange, maxLinks }: CustomLinksManagerProps) => {
   const addLink = () => {
+    if (typeof maxLinks === 'number' && maxLinks !== -1 && links.length >= maxLinks) {
+      return;
+    }
     const newLink: CustomLink = {
       id: crypto.randomUUID(),
       title: "",
@@ -60,6 +64,9 @@ export const CustomLinksManager = ({ links, onChange }: CustomLinksManagerProps)
         <div>
           <Label className="text-base">Custom Links</Label>
           <p className="text-sm text-muted-foreground">Add custom buttons to your profile</p>
+          {typeof maxLinks === 'number' && maxLinks !== -1 && (
+            <p className="text-xs text-muted-foreground mt-1">{links.length} / {maxLinks} used</p>
+          )}
         </div>
         <Button
           type="button"
@@ -67,6 +74,7 @@ export const CustomLinksManager = ({ links, onChange }: CustomLinksManagerProps)
           size="sm"
           onClick={addLink}
           className="gap-2"
+          disabled={typeof maxLinks === 'number' && maxLinks !== -1 && links.length >= maxLinks}
         >
           <Plus className="w-4 h-4" />
           Add Link

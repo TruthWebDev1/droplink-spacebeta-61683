@@ -253,6 +253,20 @@ const Dashboard = () => {
         setProfile({ ...profile, storeUrl: sanitizedUrl });
       }
 
+      // Enforce plan limits before saving
+      const socialCount = Object.values(profile.socialLinks).filter(Boolean).length;
+      const linksCount = profile.customLinks.length;
+      if (features.maxSocial !== -1 && socialCount > features.maxSocial) {
+        toast.error(`Free plan allows ${features.maxSocial} social link. Remove extras or upgrade.`);
+        navigate('/subscription');
+        return;
+      }
+      if (features.maxLinks !== -1 && linksCount > features.maxLinks) {
+        toast.error(`Free plan allows ${features.maxLinks} custom link. Remove extras or upgrade.`);
+        navigate('/subscription');
+        return;
+      }
+
       // Save or update profile
       const profilePayload = {
         user_id: user.id,
@@ -406,7 +420,7 @@ const Dashboard = () => {
                       AI Support
                     </Button>
                   )}
-                  <Button onClick={() => navigate("/pi-subscription")} variant="outline" size="sm" className="w-full justify-start gap-2">
+                  <Button onClick={() => navigate("/subscription")} variant="outline" size="sm" className="w-full justify-start gap-2">
                     <Wallet className="w-4 h-4" />
                     Upgrade Plan
                   </Button>
@@ -456,7 +470,7 @@ const Dashboard = () => {
                 </Button>
               )}
               <Button 
-                onClick={() => navigate("/pi-subscription")} 
+                onClick={() => navigate("/subscription")} 
                 variant="outline" 
                 size="sm" 
                 className="hidden md:flex gap-2"
@@ -604,7 +618,7 @@ const Dashboard = () => {
                   disabled={!features.hasYoutube}
                 />
                 {!features.hasYoutube && (
-                  <Button onClick={() => navigate("/pi-subscription")} variant="link" size="sm" className="mt-1 p-0 h-auto">
+                  <Button onClick={() => navigate("/subscription")} variant="link" size="sm" className="mt-1 p-0 h-auto">
                     Upgrade to add YouTube video
                   </Button>
                 )}
@@ -749,6 +763,7 @@ const Dashboard = () => {
               <CustomLinksManager
                 links={profile.customLinks}
                 onChange={(links) => setProfile({ ...profile, customLinks: links })}
+                maxLinks={features.maxLinks}
               />
             </div>
 
@@ -795,6 +810,7 @@ const Dashboard = () => {
                       theme: { ...profile.theme, primaryColor: e.target.value }
                     })}
                     className="h-12 w-full"
+                    disabled={plan === 'free'}
                   />
                 </div>
                 <div>
@@ -808,6 +824,7 @@ const Dashboard = () => {
                       theme: { ...profile.theme, backgroundColor: e.target.value }
                     })}
                     className="h-12 w-full"
+                    disabled={plan === 'free'}
                   />
                 </div>
                 <div>
@@ -820,11 +837,15 @@ const Dashboard = () => {
                       theme: { ...profile.theme, iconStyle: e.target.value }
                     })}
                     className="w-full h-10 px-3 rounded-md bg-input-bg border border-border"
+                    disabled={plan === 'free'}
                   >
                     <option value="rounded">Rounded</option>
                     <option value="square">Square</option>
                     <option value="circle">Circle</option>
                   </select>
+                  {plan === 'free' && (
+                    <Button onClick={() => navigate('/subscription')} variant="link" size="sm" className="mt-2 p-0 h-auto">Upgrade to customize design</Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -941,7 +962,7 @@ const Dashboard = () => {
                     <BarChart3 className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                     <h3 className="text-lg font-semibold mb-2">Analytics Available in Pro Plan</h3>
                     <p className="text-muted-foreground mb-4">Track visitor data, clicks, and more</p>
-                    <Button onClick={() => navigate("/pi-subscription")}>Upgrade to Pro</Button>
+                    <Button onClick={() => navigate("/subscription")}>Upgrade to Pro</Button>
                   </div>
                 ) : profileId ? (
                   <Analytics profileId={profileId} />

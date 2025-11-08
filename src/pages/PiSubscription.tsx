@@ -22,7 +22,7 @@ const getPlans = (isYearly: boolean) => [
       "No YouTube links",
       "No Pi tips",
     ],
-    current: true,
+    current: false,
   },
   {
     name: "Premium",
@@ -70,12 +70,22 @@ const PiSubscription = () => {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('id')
+          .select('id, username, business_name')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
         
         if (profile) {
           setProfileId(profile.id);
+        } else {
+          // Create minimal profile so user can proceed
+          const username = `user-${user.id.slice(0, 8)}`;
+          const business = user.email?.split('@')[0] || 'New User';
+          const { data: created } = await supabase
+            .from('profiles')
+            .insert({ user_id: user.id, username, business_name: business, subscription_plan: 'free' })
+            .select('id')
+            .single();
+          if (created) setProfileId(created.id);
         }
       }
     };
@@ -282,14 +292,43 @@ const PiSubscription = () => {
                     </li>
                   ))}
                 </ul>
-                <Button 
-                  className="w-full" 
-                  variant={plan.popular ? "default" : "outline"}
-                  disabled={plan.current || loading}
-                  onClick={() => handlePiPayment(plan.name, plan.piAmount, isYearly ? 'yearly' : 'monthly')}
-                >
-                  {plan.current ? "Current Plan" : `Subscribe with Pi`}
-                </Button>
+                {plan.name === 'Free' ? (
+                  <Button 
+                    className="w-full" 
+                    variant="outline"
+                    disabled={loading}
+                    onClick={async () => {
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (!user) {
+                        toast.error('Please log in');
+                        navigate('/auth');
+                        return;
+                      }
+                      if (!profileId) {
+                        toast.error('Profile not found');
+                        return;
+                      }
+                      // Ensure plan is set to free and proceed
+                      await supabase
+                        .from('profiles')
+                        .update({ subscription_plan: 'free', subscription_expires_at: null, subscription_period: null })
+                        .eq('id', profileId);
+                      toast.success('Using Free plan');
+                      navigate('/');
+                    }}
+                  >
+                    Continue with Free
+                  </Button>
+                ) : (
+                  <Button 
+                    className="w-full" 
+                    variant={plan.popular ? "default" : "outline"}
+                    disabled={loading}
+                    onClick={() => handlePiPayment(plan.name, plan.piAmount, isYearly ? 'yearly' : 'monthly')}
+                  >
+                    Subscribe with Pi
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -185,7 +185,7 @@ const PublicBio = () => {
         .from("profiles")
         .select("*")
         .eq("username", username)
-        .single();
+        .maybeSingle();
 
       if (error || !profileData) {
         setNotFound(true);
