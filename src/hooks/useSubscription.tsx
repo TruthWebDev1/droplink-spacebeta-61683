@@ -71,54 +71,36 @@ export const useSubscription = () => {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_plan, subscription_expires_at, id, user_id, username, business_name')
+        .select('subscription_plan, subscription_expires_at')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      let effectiveProfile = profile;
-
-      // If no profile exists yet, create a minimal one with defaults
-      if (!effectiveProfile) {
-        const defaultUsername = `user-${user.id.slice(0, 8)}`;
-        const defaultBusiness = user.email?.split('@')[0] || 'New User';
-        const { data: created, error: createErr } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: user.id,
-            username: defaultUsername,
-            business_name: defaultBusiness,
-            subscription_plan: 'free',
-          })
-          .select('subscription_plan, subscription_expires_at')
-          .single();
-        if (createErr) {
-          console.error('Failed to auto-create profile:', createErr);
-        } else {
-          effectiveProfile = created as any;
-        }
+      // If no profile exists, just use free plan (profile will be created in subscription page)
+      if (!profile) {
+        setPlan('free');
+        setLoading(false);
+        return;
       }
 
-      if (effectiveProfile) {
-        const currentPlan = (effectiveProfile as any).subscription_plan as SubscriptionPlan || 'free';
-        const expires = (effectiveProfile as any).subscription_expires_at ? new Date((effectiveProfile as any).subscription_expires_at) : null;
+      const currentPlan = profile.subscription_plan as SubscriptionPlan || 'free';
+      const expires = profile.subscription_expires_at ? new Date(profile.subscription_expires_at) : null;
 
-        // Check if subscription is expired
-        if (expires && expires < new Date()) {
-          // Reset to free if expired
-          await supabase
-            .from('profiles')
-            .update({ 
-              subscription_plan: 'free',
-              subscription_expires_at: null,
-              subscription_period: null 
-            })
-            .eq('user_id', user.id);
-          setPlan('free');
-          setExpiresAt(null);
-        } else {
-          setPlan(currentPlan);
-          setExpiresAt(expires);
-        }
+      // Check if subscription is expired
+      if (expires && expires < new Date()) {
+        // Reset to free if expired
+        await supabase
+          .from('profiles')
+          .update({ 
+            subscription_plan: 'free',
+            subscription_expires_at: null,
+            subscription_period: null 
+          })
+          .eq('user_id', user.id);
+        setPlan('free');
+        setExpiresAt(null);
+      } else {
+        setPlan(currentPlan);
+        setExpiresAt(expires);
       }
     } catch (error) {
       console.error('Error loading subscription:', error);

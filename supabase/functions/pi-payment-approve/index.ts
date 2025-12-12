@@ -20,6 +20,12 @@ serve(async (req) => {
     console.log('Approving Pi payment:', paymentId);
 
     const piApiKey = Deno.env.get('PI_API_KEY');
+    if (!piApiKey) {
+      console.error('PI_API_KEY not configured');
+      throw new Error('Server configuration error: PI_API_KEY missing');
+    }
+
+    console.log('Calling Pi API to approve payment...');
     
     // Approve the payment with Pi servers
     const approveResponse = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/approve`, {
@@ -30,13 +36,22 @@ serve(async (req) => {
       },
     });
 
+    const responseText = await approveResponse.text();
+    console.log('Pi API response status:', approveResponse.status);
+    console.log('Pi API response:', responseText);
+
     if (!approveResponse.ok) {
-      const errorText = await approveResponse.text();
-      console.error('Pi payment approval failed:', errorText);
-      throw new Error('Failed to approve payment');
+      console.error('Pi payment approval failed:', responseText);
+      throw new Error(`Failed to approve payment: ${responseText}`);
     }
 
-    const approvalData = await approveResponse.json();
+    let approvalData;
+    try {
+      approvalData = JSON.parse(responseText);
+    } catch {
+      approvalData = { status: 'approved', paymentId };
+    }
+
     console.log('Payment approved successfully:', approvalData);
 
     return new Response(

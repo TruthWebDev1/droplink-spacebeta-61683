@@ -152,10 +152,16 @@ const Dashboard = () => {
         .from("profiles")
         .select("*")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== "PGRST116") { // PGRST116 = not found
+      if (error) {
         console.error("Error loading profile:", error);
+      }
+
+      // If no profile exists, redirect to subscription to choose plan
+      if (!profileData) {
+        navigate("/subscription");
+        return;
       }
 
       if (profileData) {

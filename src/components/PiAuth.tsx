@@ -5,50 +5,52 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { PiSDK } from "@/lib/pi-sdk";
-import { Loader2 } from "lucide-react";
-import { PiAdWatcher } from "./PiAdWatcher";
+import { Loader2, Coins } from "lucide-react";
 
 export const PiAuth = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  const [showAdWatcher, setShowAdWatcher] = useState(false);
-  const [authCompleted, setAuthCompleted] = useState(false);
 
   useEffect(() => {
-    // Check if user is already logged in
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    // Check if user is already logged in with a subscription plan
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        navigate("/");
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('subscription_plan')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (profile?.subscription_plan) {
+          // User has a plan, go to dashboard
+          navigate("/");
+        } else {
+          // User exists but no plan, go to subscription
+          navigate("/subscription");
+        }
       } else {
         setInitializing(false);
       }
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        navigate("/");
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    };
+    
+    checkAuth();
   }, [navigate]);
 
   const handlePiAuth = async () => {
     setLoading(true);
 
     try {
-      // Initialize Pi SDK
-      await PiSDK.initialize(false); // Set to true for sandbox testing
+      // Initialize Pi SDK for mainnet
+      await PiSDK.initialize(false);
 
-      // Authenticate with Pi Network
       toast.info("Please authenticate with Pi Browser...");
       const authResult = await PiSDK.authenticate(['payments', 'username']);
 
       console.log('Pi authentication successful:', authResult.user.username);
 
-      // Send access token to our backend for verification
+      // Send access token to backend for verification
       const { data, error } = await supabase.functions.invoke('pi-auth', {
         body: { accessToken: authResult.accessToken },
       });
@@ -67,35 +69,35 @@ export const PiAuth = () => {
       console.log('Backend authentication successful:', data.user.username);
 
       // Sign in using the session token
-      // Parse the magic link to get the token
-      const url = new URL(data.sessionToken);
-      const token = url.searchParams.get('token');
+      if (data.sessionToken) {
+        const url = new URL(data.sessionToken);
+        const token = url.searchParams.get('token');
 
-      if (token) {
-        const { error: verifyError } = await supabase.auth.verifyOtp({
-          token_hash: token,
-          type: 'magiclink',
-        });
+        if (token) {
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: token,
+            type: 'magiclink',
+          });
 
-        if (verifyError) {
-          console.error('Session verification error:', verifyError);
-          toast.error("Failed to create session");
-          return;
+          if (verifyError) {
+            console.error('Session verification error:', verifyError);
+            toast.error("Failed to create session");
+            return;
+          }
         }
       }
 
       toast.success(`Welcome, ${data.user.username}!`);
       
-      // Set auth as completed, show ad watcher
-      setAuthCompleted(true);
-      setShowAdWatcher(true);
+      // Navigate to subscription page to choose plan
+      navigate("/subscription");
 
     } catch (error: any) {
       console.error('Pi authentication error:', error);
       
-      if (error.message.includes('not loaded')) {
+      if (error.message?.includes('not loaded')) {
         toast.error("Please open this app in Pi Browser");
-      } else if (error.message.includes('User cancelled')) {
+      } else if (error.message?.includes('cancelled')) {
         toast.info("Authentication cancelled");
       } else {
         toast.error("Authentication failed. Please try again.");
@@ -105,48 +107,10 @@ export const PiAuth = () => {
     }
   };
 
-  const handleAdWatched = async () => {
-    toast.success("Thank you for supporting Droplink!");
-    // Ensure a profile exists before proceeding
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!profile) {
-        const username = `user-${user.id.slice(0, 8)}`;
-        const business = user.email?.split('@')[0] || 'New User';
-        await supabase.from('profiles').insert({ user_id: user.id, username, business_name: business, subscription_plan: 'free' });
-      }
-    }
-    // Send users to plan selection first time
-    navigate("/subscription");
-  };
-
-  const handleSkipAd = () => {
-    toast.info("Proceeding without ad...");
-    navigate("/");
-  };
-
   if (initializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Show ad watcher after authentication
-  if (showAdWatcher && authCompleted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <PiAdWatcher 
-          onAdWatched={handleAdWatched}
-          onSkip={handleSkipAd}
-          allowSkip={true}
-        />
       </div>
     );
   }
@@ -164,7 +128,7 @@ export const PiAuth = () => {
           </div>
           <CardTitle className="text-2xl">Welcome to Droplink</CardTitle>
           <CardDescription>
-            Sign in with your Pi Network account to continue
+            Sign in with your Pi Network account to get started
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -180,13 +144,25 @@ export const PiAuth = () => {
                 Connecting to Pi Network...
               </>
             ) : (
-              "Sign in with Pi Network"
+              <>
+                <Coins className="w-4 h-4 mr-2" />
+                Sign in with Pi Network
+              </>
             )}
           </Button>
 
           <div className="text-center text-sm text-muted-foreground space-y-2">
             <p>This app requires Pi Browser to sign in</p>
-            <p className="text-xs">Download Pi Browser from the Pi Network app</p>
+            <p className="text-xs">
+              Download Pi Browser from the Pi Network app
+            </p>
+          </div>
+
+          <div className="pt-4 border-t border-border">
+            <div className="text-center text-xs text-muted-foreground space-y-1">
+              <p>By signing in, you agree to our Terms of Service</p>
+              <p>Payments processed securely via Pi Network</p>
+            </div>
           </div>
         </CardContent>
       </Card>
