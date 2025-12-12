@@ -18,9 +18,15 @@ serve(async (req) => {
       throw new Error('Payment ID and transaction ID are required');
     }
 
-    console.log('Completing Pi payment:', paymentId, txid);
+    console.log('Completing Pi payment:', paymentId, 'txid:', txid);
 
     const piApiKey = Deno.env.get('PI_API_KEY');
+    if (!piApiKey) {
+      console.error('PI_API_KEY not configured');
+      throw new Error('Server configuration error: PI_API_KEY missing');
+    }
+
+    console.log('Calling Pi API to complete payment...');
     
     // Complete the payment with Pi servers
     const completeResponse = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
@@ -32,13 +38,22 @@ serve(async (req) => {
       body: JSON.stringify({ txid }),
     });
 
+    const responseText = await completeResponse.text();
+    console.log('Pi API response status:', completeResponse.status);
+    console.log('Pi API response:', responseText);
+
     if (!completeResponse.ok) {
-      const errorText = await completeResponse.text();
-      console.error('Pi payment completion failed:', errorText);
-      throw new Error('Failed to complete payment');
+      console.error('Pi payment completion failed:', responseText);
+      throw new Error(`Failed to complete payment: ${responseText}`);
     }
 
-    const paymentData = await completeResponse.json();
+    let paymentData;
+    try {
+      paymentData = JSON.parse(responseText);
+    } catch {
+      paymentData = { status: 'completed', paymentId, txid };
+    }
+
     console.log('Payment completed successfully:', paymentData);
 
     // Update user's subscription status in database
@@ -51,8 +66,10 @@ serve(async (req) => {
     const plan = paymentData.metadata?.plan;
     const period = paymentData.metadata?.period;
     const piAmount = paymentData.amount;
+
+    console.log('Subscription metadata:', { profileId, plan, period, piAmount });
     
-    if (profileId && plan && period) {
+    if (profileId && plan) {
       // Calculate expiration date
       const now = new Date();
       const expiresAt = new Date(now);
@@ -62,14 +79,16 @@ serve(async (req) => {
         expiresAt.setMonth(expiresAt.getMonth() + 1);
       }
 
+      console.log('Updating profile subscription:', profileId, 'to', plan, 'expires:', expiresAt.toISOString());
+
       // Update profile subscription
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
           subscription_plan: plan,
           subscription_expires_at: expiresAt.toISOString(),
-          subscription_period: period,
-          has_premium: true
+          subscription_period: period || 'monthly',
+          has_premium: plan !== 'free'
         })
         .eq('id', profileId);
 
@@ -78,14 +97,16 @@ serve(async (req) => {
         throw updateError;
       }
 
+      console.log('Profile updated successfully');
+
       // Record the transaction
       const { error: txError } = await supabase
         .from('subscription_transactions')
         .insert({
           profile_id: profileId,
           plan,
-          period,
-          pi_amount: piAmount,
+          period: period || 'monthly',
+          pi_amount: piAmount || 0,
           pi_payment_id: paymentId,
           pi_txid: txid,
           expires_at: expiresAt.toISOString()
@@ -93,9 +114,14 @@ serve(async (req) => {
 
       if (txError) {
         console.error('Failed to record transaction:', txError);
+        // Don't throw - subscription update was successful
+      } else {
+        console.log('Transaction recorded successfully');
       }
 
       console.log(`Updated profile ${profileId} to ${plan} (${period}) until ${expiresAt.toISOString()}`);
+    } else {
+      console.warn('Missing subscription metadata, skipping profile update');
     }
 
     return new Response(

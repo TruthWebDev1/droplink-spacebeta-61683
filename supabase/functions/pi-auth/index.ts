@@ -20,7 +20,6 @@ serve(async (req) => {
 
     console.log('Verifying Pi access token...');
 
-    // Get Pi API key from environment
     const piApiKey = Deno.env.get('PI_API_KEY');
     if (!piApiKey) {
       console.error('PI_API_KEY not configured');
@@ -41,114 +40,116 @@ serve(async (req) => {
     }
 
     const piUser = await verifyResponse.json();
-    console.log('Pi user verified:', piUser.username);
+    console.log('Pi user verified:', piUser.username, 'uid:', piUser.uid);
 
-    // Create or get Supabase client
+    // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if profile exists with this Pi username
+    const email = `${piUser.uid}@pi.network`;
+    let userId: string | null = null;
+    let profileId: string | null = null;
+
+    // Try to find existing auth user by email
+    console.log('Looking for existing user with email:', email);
+    
+    const { data: existingUsers } = await supabase.auth.admin.listUsers({ 
+      page: 1, 
+      perPage: 1000 
+    });
+    
+    const existingUser = existingUsers?.users?.find(
+      (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+    );
+
+    if (existingUser) {
+      userId = existingUser.id;
+      console.log('Found existing auth user:', userId);
+    } else {
+      // Create new auth user
+      console.log('Creating new auth user for:', email);
+      const { data: newAuthUser, error: createError } = await supabase.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: {
+          pi_username: piUser.username,
+          pi_uid: piUser.uid,
+        },
+      });
+
+      if (createError) {
+        console.error('Failed to create auth user:', createError);
+        throw createError;
+      }
+
+      userId = newAuthUser.user.id;
+      console.log('Created new auth user:', userId);
+    }
+
+    // Check for existing profile
     const { data: existingProfile } = await supabase
       .from('profiles')
-      .select('id, user_id')
-      .eq('username', piUser.username)
+      .select('id, subscription_plan')
+      .eq('user_id', userId)
       .maybeSingle();
-
-    let profileId;
-    let userId;
-
-    const email = `${piUser.uid}@pi.network`;
 
     if (existingProfile) {
       profileId = existingProfile.id;
-      userId = existingProfile.user_id;
-      console.log('Existing profile found:', profileId);
+      console.log('Found existing profile:', profileId);
     } else {
-      console.log('No existing profile found. Ensuring auth user exists for', email);
-
-      // Try to find an existing auth user first
-      let authUserId: string | null = null;
-      try {
-        const { data: usersData, error: listError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        if (listError) {
-          console.warn('listUsers error (safe to ignore):', listError);
-        } else {
-          const match = usersData?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
-          if (match) authUserId = match.id;
-        }
-      } catch (e) {
-        console.warn('listUsers threw (safe to continue):', e);
-      }
-
-      if (!authUserId) {
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email,
-          email_confirm: true,
-          user_metadata: {
-            pi_username: piUser.username,
-            pi_uid: piUser.uid,
-          },
-        });
-
-        if (authError) {
-          // If the email already exists, fetch that user and continue
-          // @ts-ignore code property exists on AuthApiError
-          if ((authError as any).code === 'email_exists') {
-            console.warn('Auth user already exists, fetching existing user by email');
-            const { data: usersData2 } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-            const match2 = usersData2?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
-            if (match2) authUserId = match2.id;
-          } else {
-            console.error('Failed to create auth user:', authError);
-            throw authError;
-          }
-        } else {
-          authUserId = authData.user.id;
-          console.log('Created new auth user:', authUserId);
-        }
-      }
-
-      if (!authUserId) {
-        throw new Error('Unable to resolve auth user id');
-      }
-
-      userId = authUserId;
-
-      // Ensure profile exists for this user
-      const { data: newProfile, error: profileError } = await supabase
+      // Also check by username
+      const { data: profileByUsername } = await supabase
         .from('profiles')
-        .insert({
-          user_id: userId,
-          username: piUser.username,
-          business_name: piUser.username,
-        })
-        .select()
+        .select('id, user_id, subscription_plan')
+        .eq('username', piUser.username)
         .maybeSingle();
 
-      if (profileError) {
-        // Ignore unique violations and fetch the profile
-        console.warn('Profile insert error, attempting to fetch existing profile:', profileError);
-      }
-
-      if (newProfile) {
-        profileId = newProfile.id;
+      if (profileByUsername) {
+        profileId = profileByUsername.id;
+        // Update user_id if not set
+        if (!profileByUsername.user_id) {
+          await supabase
+            .from('profiles')
+            .update({ user_id: userId })
+            .eq('id', profileId);
+        }
+        console.log('Found profile by username:', profileId);
       } else {
-        const { data: fetchedProfile } = await supabase
+        // Create new profile with free plan
+        console.log('Creating new profile for user:', userId);
+        const { data: newProfile, error: profileError } = await supabase
           .from('profiles')
+          .insert({
+            user_id: userId,
+            username: piUser.username,
+            business_name: piUser.username,
+            subscription_plan: 'free'
+          })
           .select('id')
-          .eq('username', piUser.username)
-          .maybeSingle();
-        profileId = fetchedProfile?.id;
-      }
+          .single();
 
-      console.log('Resolved profile id:', profileId);
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+          // Try to fetch if it was a duplicate
+          const { data: fetchedProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('user_id', userId)
+            .maybeSingle();
+          
+          profileId = fetchedProfile?.id || null;
+        } else {
+          profileId = newProfile.id;
+        }
+        console.log('Profile created/found:', profileId);
+      }
     }
 
     // Generate session token for the user
     const { data: sessionData, error: sessionError } = await supabase.auth.admin.generateLink({
       type: 'magiclink',
-      email: `${piUser.uid}@pi.network`,
+      email,
     });
 
     if (sessionError) {
@@ -156,10 +157,15 @@ serve(async (req) => {
       throw sessionError;
     }
 
+    console.log('Authentication successful for:', piUser.username);
+
     return new Response(
       JSON.stringify({
         success: true,
-        user: piUser,
+        user: {
+          username: piUser.username,
+          uid: piUser.uid,
+        },
         profileId,
         sessionToken: sessionData.properties.action_link,
       }),
